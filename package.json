@@ -1,0 +1,28 @@
+{
+  "name": "iiot-demo",
+  "version": "1.0.0",
+  "description": "IIoT Demo with HiveMQ and Node-RED Dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "start-sensors": "node sensors/start-sensors.js",
+    "start-nodered": "node-red",
+    "install-nodered": "npm install -g node-red",
+    "install-dashboard": "npm install -g node-red-dashboard"
+  },
+  "keywords": [
+    "iiot",
+    "mqtt",
+    "nodered",
+    "dashboard",
+    "sensors"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "mqtt": "^5.13.2",
+    "node-red": "^3.1.0",
+    "node-red-dashboard": "^3.6.0",
+    "ws": "^8.18.3"
+  }
+}

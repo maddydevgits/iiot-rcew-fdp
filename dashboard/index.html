@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIoT Dashboard - HiveMQ</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 10px;
+        }
+
+        .status.connected {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .status.disconnected {
+            background: #f44336;
+            color: white;
+        }
+
+        .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .sensor-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .sensor-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .sensor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .sensor-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .sensor-icon {
+            font-size: 2rem;
+        }
+
+        .gauge-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .gauge {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .gauge.normal { background: #4CAF50; }
+        .gauge.warning { background: #FF9800; }
+        .gauge.critical { background: #f44336; }
+
+        .sensor-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        .sensor-unit {
+            font-size: 1.2rem;
+            color: #666;
+        }
+
+        .sensor-status {
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+        }
+
+        .status-normal { background: #e8f5e8; color: #2e7d32; }
+        .status-warning { background: #fff3e0; color: #ef6c00; }
+        .status-critical { background: #ffebee; color: #c62828; }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ff6384, #36a2eb, #ffcd56, #4bc0c0);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .chart-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chart-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            background: #f0f0f0;
+            color: #333;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .chart-button:hover {
+            background: #e0e0e0;
+            transform: translateY(-2px);
+        }
+
+        .chart-button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .chart-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-value.updating {
+            transform: scale(1.1);
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #e9ecef;
+        }
+
+        .chart-legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 15px;
+            background: #f8f9fa;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .legend-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-item.hidden .legend-color {
+            opacity: 0.3;
+        }
+
+        .chart-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .data-table {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .table-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .connection-info {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: white;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .sensors-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .chart-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .chart-controls {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+
+            .chart-button {
+                font-size: 0.8rem;
+                padding: 6px 12px;
+            }
+
+            .chart-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .chart-legend {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .legend-item {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .chart-wrapper {
+                height: 300px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .chart-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-controls {
+                gap: 5px;
+            }
+
+            .chart-button {
+                font-size: 0.7rem;
+                padding: 4px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏭 IIoT Dashboard</h1>
+            <div class="connection-info">
+                <div id="connection-status" class="status disconnected">Disconnected</div>
+                <div>MQTT Proxy: ws://localhost:8081</div>
+            </div>
+        </div>
+
+        <div class="sensors-grid">
+            <!-- Temperature Sensor -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <div class="sensor-title">🌡️ Temperature</div>
+                    <div class="sensor-icon">🌡️</div>
+                </div>
+                <div class="gauge-container">
+                    <div id="temperature-gauge" class="gauge normal">--</div>
+                </div>
+                <div class="sensor-value" id="temperature-value">--</div>
+                <div class="sensor-unit" id="temperature-unit">°C</div>
+                <div class="sensor-status status-normal" id="temperature-status">NORMAL</div>
+            </div>
+
+            <!-- Pressure Sensor -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <div class="sensor-title">🔧 Pressure</div>
+                    <div class="sensor-icon">🔧</div>
+                </div>
+                <div class="gauge-container">
+                    <div id="pressure-gauge" class="gauge normal">--</div>
+                </div>
+                <div class="sensor-value" id="pressure-value">--</div>
+                <div class="sensor-unit" id="pressure-unit">bar</div>
+                <div class="sensor-status status-normal" id="pressure-status">NORMAL</div>
+            </div>
+
+            <!-- Humidity Sensor -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <div class="sensor-title">💧 Humidity</div>
+                    <div class="sensor-icon">💧</div>
+                </div>
+                <div class="gauge-container">
+                    <div id="humidity-gauge" class="gauge normal">--</div>
+                </div>
+                <div class="sensor-value" id="humidity-value">--</div>
+                <div class="sensor-unit" id="humidity-unit">%</div>
+                <div class="sensor-status status-normal" id="humidity-status">NORMAL</div>
+            </div>
+
+            <!-- Vibration Sensor -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <div class="sensor-title">📳 Vibration</div>
+                    <div class="sensor-icon">📳</div>
+                </div>
+                <div class="gauge-container">
+                    <div id="vibration-gauge" class="gauge normal">--</div>
+                </div>
+                <div class="sensor-value" id="vibration-value">--</div>
+                <div class="sensor-unit" id="vibration-unit">mm/s</div>
+                <div class="sensor-status status-normal" id="vibration-status">NORMAL</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">📊 Real-time Sensor Analytics</div>
+                <div class="chart-controls">
+                    <button class="chart-button active" data-filter="all">All Sensors</button>
+                    <button class="chart-button" data-filter="temperature">🌡️ Temperature</button>
+                    <button class="chart-button" data-filter="pressure">🔧 Pressure</button>
+                    <button class="chart-button" data-filter="humidity">💧 Humidity</button>
+                    <button class="chart-button" data-filter="vibration">📳 Vibration</button>
+                </div>
+            </div>
+            
+            <div class="chart-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-readings">0</div>
+                    <div class="stat-label" id="total-label">Total Readings</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avg-value">--</div>
+                    <div class="stat-label" id="avg-label">Average Value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="min-value">--</div>
+                    <div class="stat-label" id="min-label">Min Value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="max-value">--</div>
+                    <div class="stat-label" id="max-label">Max Value</div>
+                </div>
+            </div>
+            
+            <div class="chart-wrapper">
+                <div class="chart-loading" id="chart-loading">
+                    <div class="loading-spinner"></div>
+                    <div>Loading sensor data...</div>
+                </div>
+                <canvas id="sensorChart"></canvas>
+            </div>
+            
+            <div class="chart-legend">
+                <div class="legend-item" data-sensor="temperature">
+                    <div class="legend-color" style="background-color: #ff6384;"></div>
+                    <span>🌡️ Temperature (°C)</span>
+                </div>
+                <div class="legend-item" data-sensor="pressure">
+                    <div class="legend-color" style="background-color: #36a2eb;"></div>
+                    <span>🔧 Pressure (bar)</span>
+                </div>
+                <div class="legend-item" data-sensor="humidity">
+                    <div class="legend-color" style="background-color: #ffcd56;"></div>
+                    <span>💧 Humidity (%)</span>
+                </div>
+                <div class="legend-item" data-sensor="vibration">
+                    <div class="legend-color" style="background-color: #4bc0c0;"></div>
+                    <span>📳 Vibration (mm/s)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="data-table">
+            <div class="table-title">📋 Latest Sensor Readings</div>
+            <table id="sensor-table">
+                <thead>
+                    <tr>
+                        <th>Sensor ID</th>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                        <th>Timestamp</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="sensor-table-body">
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: #666;">Waiting for sensor data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html> 
